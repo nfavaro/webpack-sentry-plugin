@@ -2,6 +2,7 @@ import request from 'request-promise'
 import fs from 'fs'
 
 const BASE_SENTRY_URL = 'https://sentry.io/api/0/projects'
+const BASE_SENTRY_ORG_URL = 'https://sentry.io/api/0/organizations'
 
 const DEFAULT_INCLUDE = /\.js$|\.map$/
 const DEFAULT_TRANSFORM = filename => `~/${filename}`
@@ -11,6 +12,7 @@ const DEFAULT_BODY_TRANSFORM = version => ({ version })
 module.exports = class SentryPlugin {
   constructor(options) {
     this.baseSentryURL = options.baseSentryURL || BASE_SENTRY_URL
+    this.useOrgURL = options.useOrgURL || false
     this.organizationSlug = options.organization || options.organisation
     this.projectSlug = options.project
     this.apiKey = options.apiKey
@@ -111,7 +113,21 @@ module.exports = class SentryPlugin {
     return isIncluded && !isExcluded
   }
 
+  addProjectSlugToBody() {
+    if (
+      !this.releaseBody.projects || !Array.isArray(this.releaseBody.projects)
+    ) {
+      this.releaseBody.projects = [this.projectSlug]
+    }
+    else if (!this.releaseBody.projects.includes(this.projectSlug)) {
+      this.releaseBody.projects.push(this.projectSlug)
+    }
+  }
+
   createRelease() {
+    if (this.useOrgURL) {
+      this.addProjectSlugToBody()
+    }
     return request({
       url: `${this.sentryReleaseUrl()}/`,
       method: 'POST',
@@ -144,7 +160,12 @@ module.exports = class SentryPlugin {
   }
 
   sentryReleaseUrl() {
-    return `${this.baseSentryURL}/${this.organizationSlug}/${this.projectSlug}/releases` // eslint-disable-line max-len
+    if (this.useOrgURL) {
+      return `${BASE_SENTRY_ORG_URL}/${this.organizationSlug}/releases`
+    }
+    else {
+      return `${this.baseSentryURL}/${this.organizationSlug}/${this.projectSlug}/releases` // eslint-disable-line max-len
+    }
   }
 
   deleteFiles(stats) {
